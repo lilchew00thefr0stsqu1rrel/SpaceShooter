@@ -1,0 +1,243 @@
+using UnityEngine;
+
+
+namespace SpaceShooter
+{
+    [RequireComponent(typeof(Rigidbody2D))]
+    public class SpaceShip : Destructible
+    {
+        [SerializeField] private Sprite m_PreviewImage;
+
+        /// <summary>
+        /// Масса для автоматической установки у ригида.
+        /// </summary>
+        [Header("Space ship")]
+        [SerializeField] private float m_Mass;
+
+        /// <summary>
+        /// Толкающая вперёд сила
+        /// </summary>
+        [SerializeField] private float m_Thrust;
+
+        /// <summary>
+        /// Вращающая сила.
+        /// </summary>
+        [SerializeField] private float m_Mobility;
+
+        /// <summary>
+        /// Максимальная линейная скорость.
+        /// </summary>
+        [SerializeField] private float m_MaxLinearVelocity;
+
+        /// <summary>
+        /// Максимальная вращательная скорость. В градусах.
+        /// </summary>
+        [SerializeField] private float m_MaxAngularVelocity;
+
+        /// <summary>
+        /// Сохранённая ссылка на ригид.
+        /// </summary>
+        private Rigidbody2D m_Rigid;
+
+        public float MaxLinearVelocity => m_MaxLinearVelocity;
+
+        public float MaxAngularVelocity => m_MaxAngularVelocity;
+        public Sprite PreviewImage => m_PreviewImage;
+
+        [SerializeField] private ShipStats m_Stats;
+        public ShipStats Stats => m_Stats;
+
+        
+
+        
+        #region Public API
+
+        /// <summary>
+        /// Управление линейной тягой. -1.0 до +1.0
+        /// </summary>
+        public float ThrustControl { get; set; }
+
+        /// <summary>
+        /// Управление вращательной тягой. -1.0 до +1.0
+        /// </summary>
+        public float TorqueControl { get; set; }
+
+        //protected override void SetImpactParentShipDamage(ImpactEffect ie)
+        //{
+        //    ie.GameObject().GetComponent<Explosion>()?.SetSourceShip(this);
+        //    ie.GetComponent<Explosion>()?.SetDamage(0);
+        //}
+
+        #endregion
+
+        #region Unity Event
+        protected override void Start()
+        {
+            base.Start();
+
+            m_Rigid = GetComponent<Rigidbody2D>();
+            m_Rigid.mass = m_Mass;
+
+            m_Rigid.inertia = 1;
+
+            InitOffensive();
+        }
+
+
+
+        private void FixedUpdate()
+        {
+            UpdateRigidBody();
+
+            UpdateEnergyRegen();
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Метод добавления сил кораблю для движения.
+        /// </summary>
+        private void UpdateRigidBody()
+        {
+            m_Rigid.AddForce(ThrustControl * m_Thrust * transform.up * Time.fixedDeltaTime, ForceMode2D.Force);
+
+            m_Rigid.AddForce(-m_Rigid.linearVelocity * (m_Thrust / m_MaxLinearVelocity) * Time.fixedDeltaTime, ForceMode2D.Force);
+
+            m_Rigid.AddTorque(TorqueControl * m_Mobility * Time.fixedDeltaTime, ForceMode2D.Force);
+
+            m_Rigid.AddTorque(-m_Rigid.angularVelocity * (m_Mobility / m_MaxAngularVelocity) * Time.fixedDeltaTime, ForceMode2D.Force);
+
+
+
+            //Debug.Log(m_Rigid.linearVelocity.magnitude + " Doll " + name);
+        }
+
+        [SerializeField] private Turret[] m_Turrets;
+
+        public void Fire(TurretMode mode)
+        {
+            for (int i = 0; i < m_Turrets.Length; i++)
+            {
+                if (m_Turrets[i].Mode == mode)
+                {
+                    m_Turrets[i].Fire();
+                }
+            }
+        }
+
+        [SerializeField] private int m_MaxEnergy;
+        [SerializeField] private int m_MaxAmmo;
+        [SerializeField] private int m_EnergyRegenPerSecond;
+
+
+        private float m_PrimaryEnergy;
+        private int m_SecondaryAmmo;
+
+        public int SecondaryAmmo => m_SecondaryAmmo;
+
+        public void AddEnergy(int e)
+        {
+            m_PrimaryEnergy = Mathf.Clamp(m_PrimaryEnergy + e, 0, m_MaxEnergy);
+
+            
+        }
+
+        public void AddAmmo(int ammo)
+        {
+            m_SecondaryAmmo = Mathf.Clamp(m_SecondaryAmmo + ammo, 0, m_MaxAmmo);
+        }
+
+        private void InitOffensive()
+        {
+            m_PrimaryEnergy = m_MaxEnergy;
+            m_SecondaryAmmo = m_MaxAmmo;
+        }
+
+        private void UpdateEnergyRegen()
+        {
+            m_PrimaryEnergy += (float) m_EnergyRegenPerSecond * Time.fixedDeltaTime;
+            m_PrimaryEnergy = Mathf.Clamp(m_PrimaryEnergy, 0, m_MaxEnergy);
+        }
+
+        public bool DrawEnergy(int count)
+        {
+            if (count == 0) 
+                return true;
+
+            if (m_PrimaryEnergy >= count)
+            {
+                m_PrimaryEnergy -= count;
+                return true;
+            }
+
+            return false;
+        }
+
+
+        public bool DrawAmmo(int count)
+        {
+            if (count == 0) 
+                return true;
+
+            if (m_SecondaryAmmo >= count)
+            {
+                m_SecondaryAmmo -= count;
+                return true;
+            }
+
+            return false;
+        }
+
+        public void AssignWeapon(TurretProperties props)
+        {
+            for (int i = 0; i < m_Turrets.Length; i++)
+            {
+                m_Turrets[i].AssignLoadout(props);
+            }
+        }
+
+        public void AddMaxLinearVelocity(float bonusLinearVelocity)
+        {
+            m_MaxLinearVelocity += bonusLinearVelocity;
+        }
+
+        public void RemoveMaxLinearVelocity(float bonusLinearVelocity)
+        {
+            m_MaxLinearVelocity -= bonusLinearVelocity;
+        }
+
+        public void ResetSpeed()
+        {
+            m_Thrust = m_Stats.Thrust;
+            m_Mobility = m_Stats.Mobility;
+            m_MaxLinearVelocity = m_Stats.MaxLinearVelocity;
+            m_MaxAngularVelocity = m_Stats.MaxAngularVelocity;
+        }
+
+        public void LoadRocket()
+        {
+            AssignWeapon(m_Stats.SecondaryTurret);   
+        }
+
+        public void ResetRockets()
+        {
+            AssignWeapon(null);
+        }
+
+        public override void RecordMaxHP(int hitPoints)
+        {
+            if (Player.Instance.ActiveShip == this)
+               Player.Instance.UsedData.ShipMaxHitPoints = hitPoints;
+        }
+
+       
+
+     
+
+        private void OnCollisionEnter2D(Collision2D collision)
+        {
+           // Debug.Log("Rerir " +  collision.gameObject.transform.root.name);
+        }
+    }
+}
+
